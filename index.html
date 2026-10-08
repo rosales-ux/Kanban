@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Tablero Kanban</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+html,body{margin:0}
+/* Layout: carriles horizontales con scroll lateral (snap en móvil); tarjetas como fichas de papel sobre un tablero gris azulado */
+:root{
+  --bg:#edf0f4; --lane:#e0e5eb; --card:#ffffff; --fg:#1a2230; --muted:#5b6879; --line:#cbd3dd;
+  --accent:#2c56c9; --accent-ink:#ffffff; --accent-soft:#dbe4fb; --danger:#c0352a; --danger-soft:#fbe3e0;
+  --p-alta:#cf4035; --p-media:#c98a12; --p-baja:#2f8f60;
+  --c1:#2c56c9; --c2:#c98a12; --c3:#2f8f60; --c4:#8a4fc2; --c5:#cf4035; --c6:#1f8a9a;
+  --shadow:0 1px 2px rgba(20,32,55,.08),0 2px 8px rgba(20,32,55,.06);
+  --shadow-lift:0 12px 28px rgba(20,32,55,.22),0 3px 8px rgba(20,32,55,.12);
+  --display:"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --body:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161e; --lane:#1a212c; --card:#242d3a; --fg:#e6ebf2; --muted:#98a5b6; --line:#334052;
+    --accent:#7b9cf2; --accent-ink:#0f1522; --accent-soft:#25335a; --danger:#f07a6f; --danger-soft:#3d2224;
+    --p-alta:#f07a6f; --p-media:#e8b24a; --p-baja:#5cc492;
+    --c1:#7b9cf2; --c2:#e8b24a; --c3:#5cc492; --c4:#b88ae8; --c5:#f07a6f; --c6:#53c1d0;
+    --shadow:0 1px 2px rgba(0,0,0,.35); --shadow-lift:0 14px 30px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161e; --lane:#1a212c; --card:#242d3a; --fg:#e6ebf2; --muted:#98a5b6; --line:#334052;
+  --accent:#7b9cf2; --accent-ink:#0f1522; --accent-soft:#25335a; --danger:#f07a6f; --danger-soft:#3d2224;
+  --p-alta:#f07a6f; --p-media:#e8b24a; --p-baja:#5cc492;
+  --c1:#7b9cf2; --c2:#e8b24a; --c3:#5cc492; --c4:#b88ae8; --c5:#f07a6f; --c6:#53c1d0;
+  --shadow:0 1px 2px rgba(0,0,0,.35); --shadow-lift:0 14px 30px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;display:flex;flex-direction:column;overflow:hidden}
+body.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding:20px 16px 14px}
+.brand h1{font-family:var(--display);font-weight:700;font-size:1.7rem;letter-spacing:-.01em;margin:0;line-height:1.1;text-wrap:balance}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:.86rem}
+.stats{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.stat{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stat b{display:block;font-family:var(--display);font-size:1.25rem;color:var(--fg);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+.btn-ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;color:var(--muted);font-size:.85rem}
+.btn-ghost:hover{color:var(--fg);border-color:var(--muted)}
+
+.board{flex:1;min-height:0;display:flex;align-items:flex-start;gap:14px;overflow-x:auto;overflow-y:hidden;padding:4px 16px 20px;scroll-snap-type:x proximity;scroll-padding-inline:16px}
+.lane{flex:0 0 auto;width:min(310px,84vw);max-height:100%;display:flex;flex-direction:column;background:var(--lane);border-radius:12px;scroll-snap-align:start;transition:box-shadow .15s}
+.lane.over{box-shadow:inset 0 0 0 2px var(--accent)}
+.lane-head{display:flex;align-items:center;gap:8px;padding:12px 10px 8px 14px}
+.dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:var(--dc)}
+.lane-title{flex:1;min-width:0;border:1px solid transparent;background:none;border-radius:6px;padding:3px 6px;font-family:var(--display);font-weight:600;font-size:1.02rem}
+.lane-title:hover{border-color:var(--line)}
+.lane-title:focus{background:var(--card);border-color:var(--accent);outline:none}
+.count{font-size:.78rem;color:var(--muted);background:var(--card);border-radius:999px;padding:1px 9px;font-variant-numeric:tabular-nums}
+.icon-btn{background:none;border:none;border-radius:6px;width:30px;height:30px;display:grid;place-items:center;color:var(--muted);cursor:pointer;flex:0 0 auto}
+.icon-btn:hover{background:var(--card);color:var(--danger)}
+.icon-btn svg{width:16px;height:16px}
+
+.cards{flex:1 1 auto;min-height:10px;overflow-y:auto;padding:4px 10px 6px;display:flex;flex-direction:column;gap:8px}
+.card{position:relative;background:var(--card);border-radius:9px;box-shadow:var(--shadow);padding:10px 34px 10px 12px;cursor:grab;border:1px solid transparent;transition:border-color .12s,transform .12s}
+.card:hover{border-color:var(--line)}
+.card.placeholder{background:transparent;box-shadow:none;border:2px dashed var(--line)}
+.card.placeholder>*{visibility:hidden}
+.card-title{font-weight:500;overflow-wrap:anywhere}
+.card-note{margin-top:4px;color:var(--muted);font-size:.86rem;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card-meta{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;color:var(--pc);background:color-mix(in srgb,var(--pc) 14%,transparent)}
+.handle{position:absolute;top:6px;right:4px;width:28px;height:32px;display:grid;place-items:center;color:var(--muted);opacity:.55;cursor:grab;touch-action:none;border-radius:6px}
+.handle:hover{opacity:1;background:var(--lane)}
+.handle svg{width:14px;height:14px}
+.ghost{position:fixed;left:0;top:0;z-index:50;pointer-events:none;box-shadow:var(--shadow-lift);transform-origin:center;cursor:grabbing;margin:0}
+
+.add-row{padding:4px 10px 10px}
+.add-btn{width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:8px 10px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:6px}
+.add-btn:hover{background:var(--card);color:var(--fg)}
+.add-form{display:flex;flex-direction:column;gap:8px}
+.add-form textarea,.field input,.field textarea,.field select,.new-lane input{width:100%;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 10px;resize:vertical}
+.add-form textarea:focus,.field input:focus,.field textarea:focus,.field select:focus,.new-lane input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:500}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-plain{background:none;color:var(--muted)}
+.btn-plain:hover{color:var(--fg)}
+.btn-danger{background:var(--danger-soft);color:var(--danger)}
+.hint{font-size:.75rem;color:var(--muted)}
+
+.new-lane{flex:0 0 auto;width:min(310px,84vw);background:color-mix(in srgb,var(--lane) 55%,transparent);border:2px dashed var(--line);border-radius:12px;padding:10px;scroll-snap-align:start}
+.new-lane .add-btn{justify-content:center}
+
+.scrim{position:fixed;inset:0;background:rgba(10,16,28,.45);display:grid;place-items:center;padding:16px;z-index:100}
+.modal{background:var(--card);color:var(--fg);border-radius:14px;box-shadow:var(--shadow-lift);width:min(460px,100%);max-height:calc(100% - 32px);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+.modal h2{font-family:var(--display);font-weight:600;font-size:1.2rem;margin:0}
+.modal p{margin:0;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:9px;font-size:.88rem;z-index:120;display:flex;gap:12px;align-items:center;box-shadow:var(--shadow-lift)}
+.toast button{background:none;border:none;color:inherit;font-weight:600;text-decoration:underline;cursor:pointer;padding:0}
+
+@media (max-width:520px){
+  .brand h1{font-size:1.4rem}
+  .grid2{grid-template-columns:1fr}
+  .handle{opacity:.8}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <h1>Tablero Kanban</h1>
+    <p>Arrastra tarjetas entre columnas. Los cambios se guardan en este navegador.</p>
+  </div>
+  <div class="stats">
+    <div class="stat">Tarjetas<b id="s-total">0</b></div>
+    <div class="stat">Completadas<b id="s-done">0%</b></div>
+    <button class="btn-ghost" id="reset-btn" type="button">Restablecer ejemplo</button>
+  </div>
+</header>
+
+<main class="board" id="board" aria-label="Tablero"></main>
+<div id="layer"></div>
+
+<script>
+(function(){
+  var STORE = 'kanban-tablero-v2';
+  var GRIP = '<svg viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><circle cx="4.5" cy="3" r="1.3"/><circle cx="9.5" cy="3" r="1.3"/><circle cx="4.5" cy="7" r="1.3"/><circle cx="9.5" cy="7" r="1.3"/><circle cx="4.5" cy="11" r="1.3"/><circle cx="9.5" cy="11" r="1.3"/></svg>';
+  var TRASH = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>';
+  var PRIO = { alta: 'Alta', media: 'Media', baja: 'Baja' };
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  function sample(){
+    return { columns: [
+      { id: uid(), title: 'Por hacer', tasks: [
+        { id: uid(), title: 'Revisar presupuesto de obra del mes', note: 'Comparar contra avance físico y flujo de caja.', priority: 'alta' },
+        { id: uid(), title: 'Solicitar cotizaciones de acabados', note: 'Mínimo tres proveedores.', priority: 'media' },
+        { id: uid(), title: 'Actualizar directorio de contactos', note: '', priority: 'baja' }
+      ]},
+      { id: uid(), title: 'En progreso', tasks: [
+        { id: uid(), title: 'Preparar informe para comité', note: 'Incluir variaciones y riesgos principales.', priority: 'alta' },
+        { id: uid(), title: 'Diseñar página de inicio', note: 'Wireframe listo; falta versión móvil.', priority: 'media' }
+      ]},
+      { id: uid(), title: 'Hecho', tasks: [
+        { id: uid(), title: 'Análisis de mercado inicial', note: '', priority: 'baja' }
+      ]}
+    ]};
+  }
+
+  var state;
+  try { state = JSON.parse(localStorage.getItem(STORE)); } catch (e) { state = null; }
+  if (!state || !state.columns) state = sample();
+
+  function save(){ try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+  function findCol(id){ for (var i = 0; i < state.columns.length; i++) if (state.columns[i].id === id) return state.columns[i]; return null; }
+  function findTask(id){
+    for (var i = 0; i < state.columns.length; i++){
+      var c = state.columns[i];
+      for (var j = 0; j < c.tasks.length; j++) if (c.tasks[j].id === id) return { col: c, index: j, task: c.tasks[j] };
+    }
+    return null;
+  }
+
+  function el(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  var board = document.getElementById('board');
+  var layer = document.getElementById('layer');
+  var openAdd = null;   // id de columna con formulario abierto
+  var addingLane = false;
+  var justDragged = false;
+
+  /* ---------- Render ---------- */
+  function render(){
+    var scroll = board.scrollLeft;
+    board.innerHTML = '';
+    state.columns.forEach(function(col, ci){
+      var lane = el('section', 'lane');
+      lane.dataset.id = col.id;
+      lane.style.setProperty('--dc', 'var(--c' + ((ci % 6) + 1) + ')');
+
+      var head = el('div', 'lane-head');
+      head.appendChild(el('span', 'dot'));
+      var title = el('input', 'lane-title');
+      title.value = col.title;
+      title.id = 'lane-title-' + col.id;
+      title.setAttribute('aria-label', 'Nombre de la columna');
+      title.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === 'Escape') title.blur(); });
+      title.addEventListener('blur', function(){
+        var v = title.value.trim();
+        if (v && v !== col.title){ col.title = v; save(); }
+        else title.value = col.title;
+      });
+      head.appendChild(title);
+      head.appendChild(el('span', 'count', String(col.tasks.length)));
+      var del = el('button', 'icon-btn');
+      del.type = 'button';
+      del.title = 'Eliminar columna';
+      del.setAttribute('aria-label', 'Eliminar columna ' + col.title);
+      del.innerHTML = TRASH;
+      del.addEventListener('click', function(){ confirmDeleteColumn(col); });
+      head.appendChild(del);
+      lane.appendChild(head);
+
+      var cards = el('div', 'cards');
+      col.tasks.forEach(function(t){ cards.appendChild(cardEl(t)); });
+      lane.appendChild(cards);
+
+      var addRow = el('div', 'add-row');
+      if (openAdd === col.id) addRow.appendChild(addForm(col));
+      else {
+        var ab = el('button', 'add-btn', '+ Añadir tarjeta');
+        ab.type = 'button';
+        ab.addEventListener('click', function(){ openAdd = col.id; render(); });
+        addRow.appendChild(ab);
+      }
+      lane.appendChild(addRow);
+      board.appendChild(lane);
+    });
+
+    var nl = el('div', 'new-lane');
+    if (addingLane){
+      var f = el('form', 'add-form');
+      var inp = el('input');
+      inp.id = 'new-lane-input';
+      inp.placeholder = 'Nombre de la columna';
+      inp.maxLength = 40;
+      f.appendChild(inp);
+      var r = el('div', 'row');
+      var ok = el('button', 'btn btn-primary', 'Crear columna'); ok.type = 'submit';
+      var no = el('button', 'btn btn-plain', 'Cancelar'); no.type = 'button';
+      no.addEventListener('click', function(){ addingLane = false; render(); });
+      r.appendChild(ok); r.appendChild(no); f.appendChild(r);
+      f.addEventListener('submit', function(e){
+        e.preventDefault();
+        var v = inp.value.trim();
+        if (!v){ inp.focus(); return; }
+        state.columns.push({ id: uid(), title: v, tasks: [] });
+        addingLane = false; save(); render();
+        board.scrollLeft = board.scrollWidth;
+      });
+      inp.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ addingLane = false; render(); } });
+      nl.appendChild(f);
+      setTimeout(function(){ inp.focus(); }, 0);
+    } else {
+      var nb = el('button', 'add-btn', '+ Añadir columna');
+      nb.type = 'button';
+      nb.addEventListener('click', function(){ addingLane = true; render(); });
+      nl.appendChild(nb);
+    }
+    board.appendChild(nl);
+    board.scrollLeft = scroll;
+    updateStats();
+  }
+
+  function cardEl(t){
+    var c = el('article', 'card');
+    c.dataset.id = t.id;
+    c.tabIndex = 0;
+    c.setAttribute('aria-label', t.title + '. Pulsa Enter para editar.');
+    c.appendChild(el('div', 'card-title', t.title));
+    if (t.note) c.appendChild(el('div', 'card-note', t.note));
+    var meta = el('div', 'card-meta');
+    var chip = el('span', 'chip', PRIO[t.priority] || 'Media');
+    chip.style.setProperty('--pc', 'var(--p-' + (t.priority || 'media') + ')');
+    meta.appendChild(chip);
+    c.appendChild(meta);
+    var h = el('span', 'handle');
+    h.innerHTML = GRIP;
+    h.title = 'Arrastrar';
+    c.appendChild(h);
+    c.addEventListener('pointerdown', onPointerDown);
+    c.addEventListener('click', function(){ if (!justDragged) openEditor(t.id); });
+    c.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openEditor(t.id); } });
+    return c;
+  }
+
+  function addForm(col){
+    var f = el('form', 'add-form');
+    var ta = el('textarea');
+    ta.id = 'add-input-' + col.id;
+    ta.rows = 2;
+    ta.placeholder = 'Título de la tarjeta';
+    f.appendChild(ta);
+    var r = el('div', 'row');
+    var ok = el('button', 'btn btn-primary', 'Añadir'); ok.type = 'submit';
+    var no = el('button', 'btn btn-plain', 'Cancelar'); no.type = 'button';
+    no.addEventListener('click', function(){ openAdd = null; render(); });
+    r.appendChild(ok); r.appendChild(no);
+    r.appendChild(el('span', 'hint', 'Enter para añadir'));
+    f.appendChild(r);
+    function submit(){
+      var v = ta.value.trim();
+      if (!v){ ta.focus(); return; }
+      col.tasks.push({ id: uid(), title: v, note: '', priority: 'media' });
+      save(); render();
+      var lane = board.querySelector('.lane[data-id="' + col.id + '"] .cards');
+      if (lane) lane.scrollTop = lane.scrollHeight;
+    }
+    f.addEventListener('submit', function(e){ e.preventDefault(); submit(); });
+    ta.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
+      if (e.key === 'Escape'){ openAdd = null; render(); }
+    });
+    setTimeout(function(){ ta.focus(); }, 0);
+    return f;
+  }
+
+  function updateStats(){
+    var total = 0;
+    state.columns.forEach(function(c){ total += c.tasks.length; });
+    var last = state.columns[state.columns.length - 1];
+    var done = last ? last.tasks.length : 0;
+    document.getElementById('s-total').textContent = total;
+    document.getElementById('s-done').textContent = total ? Math.round(done / total * 100) + '%' : '0%';
+  }
+
+  /* ---------- Modales ---------- */
+  function closeModal(){ layer.innerHTML = ''; }
+
+  function modalShell(){
+    var scrim = el('div', 'scrim');
+    var m = el('div', 'modal');
+    m.setAttribute('role', 'dialog');
+    m.setAttribute('aria-modal', 'true');
+    scrim.appendChild(m);
+    scrim.addEventListener('pointerdown', function(e){ if (e.target === scrim) closeModal(); });
+    scrim.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal(); });
+    layer.innerHTML = '';
+    layer.appendChild(scrim);
+    return m;
+  }
+
+  function openEditor(taskId){
+    var found = findTask(taskId);
+    if (!found) return;
+    var t = found.task;
+    var m = modalShell();
+    m.appendChild(el('h2', null, 'Editar tarjeta'));
+
+    var f = el('form');
+    f.style.display = 'flex'; f.style.flexDirection = 'column'; f.style.gap = '14px';
+
+    var f1 = el('div', 'field');
+    var l1 = el('label', null, 'Título'); l1.htmlFor = 'f-title';
+    var i1 = el('input'); i1.id = 'f-title'; i1.value = t.title; i1.required = true;
+    f1.appendChild(l1); f1.appendChild(i1); f.appendChild(f1);
+
+    var f2 = el('div', 'field');
+    var l2 = el('label', null, 'Notas'); l2.htmlFor = 'f-note';
+    var i2 = el('textarea'); i2.id = 'f-note'; i2.rows = 3; i2.value = t.note || ''; i2.placeholder = 'Detalles opcionales';
+    f2.appendChild(l2); f2.appendChild(i2); f.appendChild(f2);
+
+    var g = el('div', 'grid2');
+    var f3 = el('div', 'field');
+    var l3 = el('label', null, 'Prioridad'); l3.htmlFor = 'f-prio';
+    var s3 = el('select'); s3.id = 'f-prio';
+    ['alta', 'media', 'baja'].forEach(function(k){ var o = el('option', null, PRIO[k]); o.value = k; if (t.priority === k) o.selected = true; s3.appendChild(o); });
+    f3.appendChild(l3); f3.appendChild(s3); g.appendChild(f3);
+
+    var f4 = el('div', 'field');
+    var l4 = el('label', null, 'Columna'); l4.htmlFor = 'f-col';
+    var s4 = el('select'); s4.id = 'f-col';
+    state.columns.forEach(function(c){ var o = el('option', null, c.title); o.value = c.id; if (c.id === found.col.id) o.selected = true; s4.appendChild(o); });
+    f4.appendChild(l4); f4.appendChild(s4); g.appendChild(f4);
+    f.appendChild(g);
+
+    var foot = el('div', 'modal-foot');
+    var delBtn = el('button', 'btn btn-danger', 'Eliminar'); delBtn.type = 'button';
+    var armed = false;
+    delBtn.addEventListener('click', function(){
+      if (!armed){ armed = true; delBtn.textContent = '¿Seguro? Eliminar'; return; }
+      var cur = findTask(taskId);
+      if (cur){
+        var removed = cur.col.tasks.splice(cur.index, 1)[0];
+        save(); closeModal(); render();
+        toast('Tarjeta eliminada', function(){ cur.col.tasks.splice(cur.index, 0, removed); save(); render(); });
+      }
+    });
+    var right = el('div', 'row');
+    var cancel = el('button', 'btn btn-plain', 'Cancelar'); cancel.type = 'button';
+    cancel.addEventListener('click', closeModal);
+    var ok = el('button', 'btn btn-primary', 'Guardar'); ok.type = 'submit';
+    right.appendChild(cancel); right.appendChild(ok);
+    foot.appendChild(delBtn); foot.appendChild(right);
+    f.appendChild(foot);
+
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      var v = i1.value.trim();
+      if (!v){ i1.focus(); return; }
+      t.title = v;
+      t.note = i2.value.trim();
+      t.priority = s3.value;
+      var cur = findTask(taskId);
+      if (cur && s4.value !== cur.col.id){
+        cur.col.tasks.splice(cur.index, 1);
+        findCol(s4.value).tasks.push(t);
+      }
+      save(); closeModal(); render();
+    });
+    m.appendChild(f);
+    setTimeout(function(){ i1.focus(); i1.select(); }, 0);
+  }
+
+  function confirmDeleteColumn(col){
+    var m = modalShell();
+    m.appendChild(el('h2', null, 'Eliminar «' + col.title + '»'));
+    m.appendChild(el('p', null, col.tasks.length
+      ? 'Se eliminarán también sus ' + col.tasks.length + ' tarjeta' + (col.tasks.length === 1 ? '' : 's') + '.'
+      : 'La columna está vacía.'));
+    var foot = el('div', 'modal-foot');
+    foot.style.justifyContent = 'flex-end';
+    var cancel = el('button', 'btn btn-plain', 'Cancelar'); cancel.type = 'button';
+    cancel.addEventListener('click', closeModal);
+    var ok = el('button', 'btn btn-danger', 'Eliminar columna'); ok.type = 'button';
+    ok.addEventListener('click', function(){
+      var idx = state.columns.indexOf(col);
+      state.columns.splice(idx, 1);
+      save(); closeModal(); render();
+      toast('Columna eliminada', function(){ state.columns.splice(idx, 0, col); save(); render(); });
+    });
+    foot.appendChild(cancel); foot.appendChild(ok);
+    m.appendChild(foot);
+    setTimeout(function(){ cancel.focus(); }, 0);
+  }
+
+  var toastTimer = null;
+  function toast(msg, undo){
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    var t = el('div', 'toast');
+    t.setAttribute('role', 'status');
+    t.appendChild(el('span', null, msg));
+    if (undo){
+      var b = el('button', null, 'Deshacer'); b.type = 'button';
+      b.addEventListener('click', function(){ undo(); t.remove(); });
+      t.appendChild(b);
+    }
+    document.body.appendChild(t);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.remove(); }, 5000);
+  }
+
+  document.getElementById('reset-btn').addEventListener('click', function(){
+    var m = modalShell();
+    m.appendChild(el('h2', null, 'Restablecer tablero'));
+    m.appendChild(el('p', null, 'Se reemplazarán todas las columnas y tarjetas por los datos de ejemplo.'));
+    var foot = el('div', 'modal-foot');
+    foot.style.justifyContent = 'flex-end';
+    var cancel = el('button', 'btn btn-plain', 'Cancelar'); cancel.type = 'button';
+    cancel.addEventListener('click', closeModal);
+    var ok = el('button', 'btn btn-danger', 'Restablecer'); ok.type = 'button';
+    ok.addEventListener('click', function(){
+      var prev = state;
+      state = sample(); save(); closeModal(); render();
+      toast('Tablero restablecido', function(){ state = prev; save(); render(); });
+    });
+    foot.appendChild(cancel); foot.appendChild(ok);
+    m.appendChild(foot);
+  });
+
+  /* ---------- Arrastrar y soltar (ratón y táctil) ---------- */
+  var drag = null;
+
+  function onPointerDown(e){
+    if (e.button !== 0) return;
+    var card = e.currentTarget;
+    var touch = e.pointerType !== 'mouse';
+    if (touch && !e.target.closest('.handle')) return; // en móvil se arrastra desde el asa para no bloquear el scroll
+    if (!touch) e.preventDefault();
+    drag = { card: card, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, started: false };
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    if (touch) begin(e);
+  }
+
+  function begin(e){
+    var r = drag.card.getBoundingClientRect();
+    drag.ox = e.clientX - r.left;
+    drag.oy = e.clientY - r.top;
+    var g = drag.card.cloneNode(true);
+    g.classList.add('card', 'ghost');
+    g.style.width = r.width + 'px';
+    document.body.appendChild(g);
+    drag.ghost = g;
+    drag.card.classList.add('placeholder');
+    drag.started = true;
+    document.body.classList.add('dragging');
+    moveGhost();
+    drag.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function moveGhost(){
+    drag.ghost.style.transform = 'translate(' + (drag.x - drag.ox) + 'px,' + (drag.y - drag.oy) + 'px) rotate(2deg)';
+  }
+
+  function onMove(e){
+    if (!drag) return;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (!drag.started){
+      if (Math.abs(drag.x - drag.sx) + Math.abs(drag.y - drag.sy) < 6) return;
+      begin(e);
+    }
+    e.preventDefault();
+    moveGhost();
+    place();
+  }
+
+  function place(){
+    var target = document.elementFromPoint(drag.x, drag.y);
+    var lane = target && target.closest('.lane');
+    var prev = document.querySelector('.lane.over');
+    if (prev && prev !== lane) prev.classList.remove('over');
+    if (!lane) return;
+    lane.classList.add('over');
+    var list = lane.querySelector('.cards');
+    var cards = list.querySelectorAll('.card:not(.placeholder)');
+    var before = null;
+    for (var i = 0; i < cards.length; i++){
+      var r = cards[i].getBoundingClientRect();
+      if (drag.y < r.top + r.height / 2){ before = cards[i]; break; }
+    }
+    if (before){
+      if (drag.card.nextElementSibling !== before) list.insertBefore(drag.card, before);
+    } else if (list.lastElementChild !== drag.card || drag.card.parentNode !== list){
+      list.appendChild(drag.card);
+    }
+  }
+
+  function autoScroll(){
+    if (!drag || !drag.started) return;
+    var b = board.getBoundingClientRect();
+    var edge = 70, moved = false;
+    if (drag.x < b.left + edge){ board.scrollLeft -= Math.ceil((b.left + edge - drag.x) / 5); moved = true; }
+    else if (drag.x > b.right - edge){ board.scrollLeft += Math.ceil((drag.x - (b.right - edge)) / 5); moved = true; }
+    var under = document.elementFromPoint(drag.x, drag.y);
+    var list = under && under.closest('.lane') && under.closest('.lane').querySelector('.cards');
+    if (list){
+      var lr = list.getBoundingClientRect();
+      if (drag.y < lr.top + 40){ list.scrollTop -= 8; moved = true; }
+      else if (drag.y > lr.bottom - 40){ list.scrollTop += 8; moved = true; }
+    }
+    if (moved) place();
+    drag.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function cleanup(){
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+    if (drag){
+      cancelAnimationFrame(drag.raf);
+      if (drag.ghost) drag.ghost.remove();
+    }
+    document.body.classList.remove('dragging');
+    var o = document.querySelector('.lane.over');
+    if (o) o.classList.remove('over');
+  }
+
+  function onUp(){
+    if (!drag) return;
+    var d = drag;
+    cleanup();
+    drag = null;
+    if (!d.started) return;
+    var lane = d.card.closest('.lane');
+    var found = findTask(d.card.dataset.id);
+    if (lane && found){
+      var siblings = Array.prototype.slice.call(lane.querySelectorAll('.cards .card'));
+      var newIndex = siblings.indexOf(d.card);
+      found.col.tasks.splice(found.index, 1);
+      findCol(lane.dataset.id).tasks.splice(newIndex, 0, found.task);
+      save();
+    }
+    justDragged = true;
+    setTimeout(function(){ justDragged = false; }, 50);
+    render();
+  }
+
+  function onCancel(){
+    cleanup();
+    drag = null;
+    render();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
